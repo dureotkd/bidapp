@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 
 const fs = require("fs").promises;
-
+const AdmZip = require("adm-zip");
 const path = require("path");
 
 // ! isDev [commonjs module 사용으로 인한 오류]
@@ -61,6 +61,7 @@ app.on("activate", () => {
 });
 
 const directoriesToSearch = ["C:\\", "D:\\"];
+const saveDir = "C:/Bridge Kevin";
 
 ipcMain.on("GET_BID_FILE", async (event, arg) => {
   console.log(
@@ -83,7 +84,44 @@ ipcMain.on("GET_BID_FILE", async (event, arg) => {
 
   if (!empty(bidFiles1)) {
     for (const { file, filePath } of bidFiles) {
-      console.log(`file ${file} exists`);
+      const filePathArray = filePath.split("\\");
+      const fileName = filePathArray.pop();
+      const lowerFileName = fileName.toLowerCase();
+      const netFileName = lowerFileName.replace(".bid", "");
+      const privateDir = path.join(saveDir, netFileName);
+
+      try {
+        await fs.mkdir(saveDir, { recursive: true });
+
+        await fs.mkdir(privateDir, { recursive: true });
+
+        const zipFileName = lowerFileName.replace(".bid", ".zip");
+        const newZipFilePath = path.join(privateDir, zipFileName);
+
+        await fs.copyFile(filePath, newZipFilePath);
+
+        await fs.chmod(newZipFilePath, 0o777);
+
+        const zip = new AdmZip(newZipFilePath);
+        zip.extractAllTo(privateDir, true);
+
+        const printrFilePath = `${privateDir}\\${netFileName}.BID`;
+        const bidCode = await fs.readFile(printrFilePath, "utf8");
+        const decodedData = Buffer.from(bidCode, "base64").toString("utf-8");
+        const jsonData = JSON.parse(decodedData);
+
+        const num = jsonData["T1"]["C5"] || "";
+        const companyNum = jsonData["T1"]["C17"] || "";
+        const companyName = jsonData["T1"]["C18"] || "";
+
+        const confirmMsg = [
+          `공고번호 : ${num}`,
+          `사업자번호 : ${companyNum}`,
+          `사업자명 : ${companyName}`,
+        ];
+
+        console.log(confirmMsg);
+      } catch (err) {}
     }
   }
 
